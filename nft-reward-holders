@@ -1,0 +1,100 @@
+//SPDX-License-Identifier: MIT
+
+pragma solidity >= 0.8.0;
+
+import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import '@openzeppelin/contracts/token/ERC721/IERC721.sol';
+import '@openzeppelin/contracts/access/Ownable.sol';
+
+contract TokenShare is Ownable {
+    mapping(address => uint256) public lastClaimedBlock;
+
+    uint256 public claimAmountERC20;
+    uint256 public claimAmountNative;
+    uint public minNFTBalance;
+    uint256  public claimInterval ;
+
+    constructor() {
+        _transferOwnership(msg.sender);
+    }
+
+    function NftHolders(address contractAddress, address owner) public view returns(bool success){
+        IERC721 NFT = IERC721(contractAddress);
+        require(NFT.balanceOf(owner) > minNFTBalance, "INSUFFICIENT_NFT_BALANCE");
+        return true;
+    }
+
+    function canClaim(address claimer) public virtual view returns(bool success){
+        uint256 timer = claimInterval * (60 * 60);
+        bool current = (block.timestamp - lastClaimedBlock[claimer]) > timer;
+        require(current,  'WAIT');
+        return true;
+    }
+
+    //Transfering Of ERC20 Tokens From This Contract
+    function claimERC20Tokens(address asset, address contractNft) external virtual returns (bool success) {
+        IERC20 token = IERC20(asset);
+        address recipient = msg.sender;
+        require(NftHolders(contractNft, recipient));
+        require(token.balanceOf(address(this)) > claimAmountERC20, "INSUFFICINET_BALANCE");
+        require(canClaim(recipient));
+        token.transfer(recipient, claimAmountERC20);
+        lastClaimedBlock[recipient] = block.timestamp;
+        return true;
+    }
+
+    //Transferrring Of Navitve Network Coin From This Contract
+    function claimNative(address contractNft) external returns (bool success) {
+        address recipient = msg.sender;
+        require(NftHolders(contractNft, recipient));
+        require(address(this).balance > claimAmountNative, "INSUFFICINET_BALANCE");
+        require(canClaim(recipient));
+        payable(recipient).transfer(claimAmountNative);
+        lastClaimedBlock[recipient] = block.timestamp;
+        return true;
+    }
+
+
+    /// @notice if you wnat to transfer this contract balance of a certain token as the admin
+    /// @dev I have nothing to explain here again
+    /// @param asset the address of the ERC20 token You Wish To Transfer 
+    /// @param amount the amount of tokens you wish to transfer from this contract balance
+    /// @param to address you wish wish to sedn the tokens to
+    function sweepToken(address asset, uint256 amount, address to) onlyOwner external virtual returns (bool success) {
+        IERC20 token = IERC20(asset);
+        // require(depends on you, Maybe only owner class, 'Only Owner')
+        require(token.balanceOf(address(this)) > amount, "AMOUNT_EXCEEDS_BALANCE");
+        address recipient = to;
+        token.transfer(recipient, amount);
+        return true;
+    }
+    /// @notice if you want to transfer this contract balance of BNB or ETH
+    /// @dev I have nothing to explain here again
+    /// @param amount the amount of tokens you wish to transfer from this contract balance
+    /// @param to address you wish wish to sedn the tokens to
+    function sweepEth(uint256 amount, address to) onlyOwner external virtual returns (bool success) {
+       require(address(this).balance > amount, "AMOUNT_EXCEEDS_BALANCE");
+       address recipient = to;
+       payable(recipient).transfer(amount); 
+       return true;
+    }
+
+
+    function setUp(
+        uint256 _claimInterval,
+        uint _minNFTBalance,
+        uint256 _claimAmountNative,
+        uint256 _claimAmountERC20
+    ) onlyOwner external returns(bool success){
+        claimInterval = _claimInterval;
+        claimAmountERC20 = _claimAmountERC20;
+        claimAmountNative = _claimAmountNative;
+        minNFTBalance = _minNFTBalance;
+        return true;
+    }
+
+    //LEST OF THE CONTRACTS
+
+
+    function recieve() external payable {}
+}
